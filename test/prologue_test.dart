@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:business_sim/models/player_life_state.dart';
 import 'package:business_sim/services/audio_service.dart';
 import 'package:business_sim/views/components/smart_phone_modal.dart';

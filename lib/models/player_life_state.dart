@@ -99,18 +99,18 @@ class PlayerLifeState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 自然時間微幅代謝
+  /// 自然時間微幅代謝 (每次呼叫推進 1 分鐘)
   void tick() {
-    _minute += 5;
+    _minute += 1;
     if (_minute >= 60) {
       _minute = 0;
       _hour = (_hour + 1) % 24;
       if (_hour == 0) _day++;
 
-      // 每小時消耗體力與飽食
-      _energy = (_energy - 1.2).clamp(0.0, 100.0);
-      _hunger = (_hunger - 1.5).clamp(0.0, 100.0);
-      notifyListeners();
+      // 每小時微幅消耗體力與飽食
+      _energy = (_energy - 1.0).clamp(0.0, 100.0);
+      _hunger = (_hunger - 1.2).clamp(0.0, 100.0);
     }
+    notifyListeners();
   }
 }

@@ -34,20 +34,48 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0E17),
-      body: Stack(
-        children: [
-          // 1. 低多邊形大都會黃昏天際線背景
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _TitleSkylinePainter(),
-            ),
-          ),
+      backgroundColor: const Color(0xFF09080E),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = (constraints.maxWidth / constraints.maxHeight) > (9.0 / 16.0);
+          final targetWidth = isWide
+              ? (constraints.maxHeight * (9.0 / 16.0)).clamp(320.0, 480.0)
+              : constraints.maxWidth;
+          final targetHeight = constraints.maxHeight;
 
-          // 2. 主選單內容
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+          return Center(
+            child: Container(
+              width: targetWidth,
+              height: targetHeight,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F0E17),
+                borderRadius: isWide ? BorderRadius.circular(28) : BorderRadius.zero,
+                border: isWide ? Border.all(color: const Color(0xFF27272A), width: 3.5) : null,
+                boxShadow: isWide
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.8),
+                          blurRadius: 40,
+                          spreadRadius: 6,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: ClipRRect(
+                borderRadius: isWide ? BorderRadius.circular(24) : BorderRadius.zero,
+                child: Stack(
+                  children: [
+                    // 1. 低多邊形大都會黃昏天際線背景
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _TitleSkylinePainter(),
+                      ),
+                    ),
+
+                    // 2. 主選單內容
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -241,6 +269,11 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
             ),
           ),
         ],
+      ),
+    ),
+  ),
+);
+        },
       ),
     );
   }

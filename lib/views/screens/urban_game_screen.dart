@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import '../../models/player_life_state.dart';
 import '../../services/audio_service.dart';
 import '../components/smart_phone_modal.dart';
+import '../main_dashboard_screen.dart';
 
 /// 風格二：現代都會 Low-Poly 3D 微縮模型開局主畫面 (Urban Ambition Act 1)
+/// 採用高精細 3D 微縮模型底圖 + 9:16 手機比例視圖 + 即時動態粒子 + 互動標籤 + 1:1 概念圖 HUD
 class UrbanGameScreen extends StatefulWidget {
   final PlayerLifeState playerLife;
 
@@ -17,98 +20,99 @@ class UrbanGameScreen extends StatefulWidget {
 
 class _UrbanGameScreenState extends State<UrbanGameScreen> with SingleTickerProviderStateMixin {
   late final AnimationController _animCtrl;
-  final List<_RainDrop> _rainDrops = [];
+  final List<_RainParticle> _rainParticles = [];
+  final List<_RippleEffect> _ripples = [];
   final math.Random _rng = math.Random();
   final NumberFormat _currency = NumberFormat.currency(symbol: '\$', decimalDigits: 0);
 
-  // 主角位置 (以街區網格座標為基準，初始站在路口斑馬線旁 (3.5, 4.0))
-  double _playerGx = 3.5;
-  double _playerGy = 4.0;
-  double _targetGx = 3.5;
-  double _targetGy = 4.0;
-  bool _isMoving = false;
+  Timer? _gameClockTimer;
 
   @override
   void initState() {
     super.initState();
+
+    // 1. 動畫循環 (用於雨滴物理與光暈呼吸特效)
     _animCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
+      duration: const Duration(seconds: 4),
     )..repeat();
 
-    _animCtrl.addListener(_onTick);
+    _animCtrl.addListener(_updateFx);
 
-    // 進入第一幕時播放開局雨夜微音與提示
+    // 2. 獨立真實時間時鐘 (每 3 秒推進遊戲內 1 分鐘，避免 60fps 幀率暴走)
+    _gameClockTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted) {
+        widget.playerLife.tick();
+      }
+    });
+
+    // 進入第一幕時播放開局雨夜微音
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AudioService().playDoorChime();
     });
   }
 
-  void _onTick() {
+  void _updateFx() {
     if (!mounted) return;
 
-    // 1. 生成雨絲微粒
-    if (_rainDrops.length < 40) {
-      _rainDrops.add(
-        _RainDrop(
+    // 生成雨滴微粒
+    if (_rainParticles.length < 55) {
+      _rainParticles.add(
+        _RainParticle(
           x: _rng.nextDouble() * 500,
-          y: -20,
-          length: 12 + _rng.nextDouble() * 8,
-          speed: 7 + _rng.nextDouble() * 4,
+          y: -30,
+          length: 16 + _rng.nextDouble() * 12,
+          speed: 8 + _rng.nextDouble() * 5,
         ),
       );
     }
 
-    // 更新雨滴
-    for (int i = _rainDrops.length - 1; i >= 0; i--) {
-      final r = _rainDrops[i];
+    // 更新雨滴位置
+    for (int i = _rainParticles.length - 1; i >= 0; i--) {
+      final r = _rainParticles[i];
       r.y += r.speed;
-      r.x -= 1.5; // 斜雨
+      r.x -= 2.0; // 傾斜細雨
       if (r.y > 900) {
-        _rainDrops.removeAt(i);
+        // 雨滴落到地面產生偶發漣漪
+        if (_rng.nextDouble() < 0.25 && _ripples.length < 12) {
+          _ripples.add(_RippleEffect(x: r.x, y: 700 + _rng.nextDouble() * 150));
+        }
+        _rainParticles.removeAt(i);
       }
     }
 
-    // 2. 主角尋路平滑移動
-    if (_isMoving) {
-      final dx = _targetGx - _playerGx;
-      final dy = _targetGy - _playerGy;
-      final dist = math.sqrt(dx * dx + dy * dy);
-
-      if (dist < 0.05) {
-        _playerGx = _targetGx;
-        _playerGy = _targetGy;
-        _isMoving = false;
-        _checkLocationTrigger();
-      } else {
-        _playerGx += (dx / dist) * 0.04;
-        _playerGy += (dy / dist) * 0.04;
+    // 更新水窪漣漪
+    for (int i = _ripples.length - 1; i >= 0; i--) {
+      _ripples[i].radius += 0.4;
+      _ripples[i].opacity -= 0.02;
+      if (_ripples[i].opacity <= 0.0) {
+        _ripples.removeAt(i);
       }
     }
-
-    // 3. 生活狀態自然代謝
-    widget.playerLife.tick();
 
     setState(() {});
   }
 
-  void _checkLocationTrigger() {
-    // 抵達出租公寓門口 (gx: 1.0, gy: 2.0)
-    if ((_playerGx - 1.0).abs() < 0.8 && (_playerGy - 2.0).abs() < 0.8) {
-      _showApartmentSleepDialog();
-    }
+  @override
+  void dispose() {
+    _animCtrl.removeListener(_updateFx);
+    _animCtrl.dispose();
+    _gameClockTimer?.cancel();
+    super.dispose();
   }
+
+  // --- 互動彈窗 ---
 
   void _showApartmentSleepDialog() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF22202A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: const Color(0xFF1E1B29),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Row(
           children: [
             Text('🏠 ', style: TextStyle(fontSize: 22)),
-            Text('抵達出租老公寓', style: TextStyle(color: Colors.white, fontSize: 16)),
+            Text('街角出租套房', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Column(
@@ -116,25 +120,25 @@ class _UrbanGameScreenState extends State<UrbanGameScreen> with SingleTickerProv
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '推開老木門，頂樓小套房裡放著一張折疊床和小冰箱。鑰匙確實壓在門墊底下。',
-              style: TextStyle(color: Colors.white70, fontSize: 13.5, height: 1.4),
+              '推開老木門，頂樓小套房裡放著一張折疊床和小冰箱。叔叔說的鑰匙確實壓在門墊底下。',
+              style: TextStyle(color: Colors.white70, fontSize: 13.5, height: 1.45),
             ),
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF18181B),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white12),
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.5)),
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.bed_rounded, color: Color(0xFF38BDF8), size: 22),
+                  Icon(Icons.bed_rounded, color: Color(0xFF38BDF8), size: 24),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      '在折疊床上睡到明天清晨 07:00\n(體力回滿至 100%，放下旅行皮箱)',
-                      style: TextStyle(color: Color(0xFF38BDF8), fontSize: 12),
+                      '在折疊床上睡到明日早晨 07:00\n(⚡ 體力回滿至 100%，放下旅行皮箱)',
+                      style: TextStyle(color: Color(0xFF38BDF8), fontSize: 12.5, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
@@ -159,7 +163,7 @@ class _UrbanGameScreenState extends State<UrbanGameScreen> with SingleTickerProv
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   backgroundColor: Color(0xFF0284C7),
-                  content: Text('🛌 睡了一個好覺！體力已完全恢復至 100%，天亮了！'),
+                  content: Text('🛌 睡了一個好覺！體力完全恢復至 100%，早晨 07:00 天亮了！皮箱已安放在房間裡。'),
                 ),
               );
             },
@@ -170,253 +174,339 @@ class _UrbanGameScreenState extends State<UrbanGameScreen> with SingleTickerProv
     );
   }
 
-  @override
-  void dispose() {
-    _animCtrl.removeListener(_onTick);
-    _animCtrl.dispose();
-    super.dispose();
+  void _showCityMartDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF18181B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF97316).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.storefront_rounded, color: Color(0xFFF97316), size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'CITY MART 街角門市',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      Text(
+                        '幸福里老牌超商 · 24 小時營業',
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white60),
+                ),
+              ],
+            ),
+            const Divider(color: Colors.white12, height: 24),
+            ListTile(
+              leading: const Icon(Icons.dashboard_customize_rounded, color: Color(0xFF38BDF8)),
+              title: const Text('進入連鎖超商後台管理系統', style: TextStyle(color: Colors.white, fontSize: 14)),
+              subtitle: const Text('檢視進銷存、貨架微觀操作、人事排班與批發商談判', style: TextStyle(color: Colors.white54, fontSize: 11)),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white30, size: 14),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                AudioService().playScanBeep();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.work_history_rounded, color: Color(0xFFFBBF24)),
+              title: const Text('在 CITY MART 兼職打工', style: TextStyle(color: Colors.white, fontSize: 14)),
+              subtitle: const Text('值班 4 小時整理貨架與結帳，賺取 NT\$ 600 現金', style: TextStyle(color: Colors.white54, fontSize: 11)),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white30, size: 14),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                if (widget.playerLife.energy >= 48) {
+                  widget.playerLife.takePartTimeShift(hours: 4, hourlyWage: 150);
+                  AudioService().playCashRegister();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      backgroundColor: Color(0xFF10B981),
+                      content: Text('💼 兼職打工 4 小時完成！現領薪資 +NT\$ 600 入帳！'),
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      backgroundColor: Color(0xFFDC2626),
+                      content: Text('⚠️ 體力不足！請先回出租公寓折疊床睡一覺再來打工。'),
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
+
+  void _showTaxiDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1B29),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Text('🚖 ', style: TextStyle(fontSize: 22)),
+            Text('大都會計程車呼叫站', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: const Text(
+          '目前您正位於「舊城幸福里」。\n\n隨著主線商業擴展，後續章節將可搭乘計程車前往「中央金融 CBD」、「海濱觀光文創區」與「高新科技園區」簽署新門市店租！',
+          style: TextStyle(color: Colors.white70, fontSize: 13.5, height: 1.45),
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFACC15), foregroundColor: Colors.black),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('了解', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFoodDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1B29),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Text('🍱 ', style: TextStyle(fontSize: 22)),
+            Text('街角便當小吃店', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '剛下火車飢腸轆轆，熱騰騰的排骨便當傳來撲鼻香氣。',
+              style: TextStyle(color: Colors.white70, fontSize: 13.5),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFB923C).withValues(alpha: 0.5)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.restaurant_rounded, color: Color(0xFFFB923C), size: 22),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '招牌排骨便當：NT\$ 80\n(🍴 飽食度 +25%，幸福感 +5%)',
+                      style: TextStyle(color: Color(0xFFFB923C), fontSize: 12.5, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('暫不購買', style: TextStyle(color: Colors.white60)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFB923C), foregroundColor: Colors.black),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              if (widget.playerLife.personalCash >= 80) {
+                widget.playerLife.eatFood(restore: 25, cost: 80);
+                AudioService().playScanBeep();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    backgroundColor: Color(0xFFEA580C),
+                    content: Text('😋 便當真香！飽食度 +25%，花費 NT\$ 80。'),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    backgroundColor: Color(0xFFDC2626),
+                    content: Text('⚠️ 現金不足！請先點擊手機領取叔叔贈送的啟動金。'),
+                  ),
+                );
+              }
+            },
+            child: const Text('購買並享用', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- 主視圖構建 ---
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF14131A),
+      backgroundColor: const Color(0xFF0B0A10),
       body: SafeArea(
-        child: AnimatedBuilder(
-          animation: widget.playerLife,
-          builder: (context, _) {
-            return Stack(
-              children: [
-                // 1. 風格二：現代都會 Low-Poly 3D 微縮模型畫布
-                Positioned.fill(
-                  child: GestureDetector(
-                    onTapUp: (details) => _handleCanvasTap(details.localPosition),
-                    child: CustomPaint(
-                      painter: _LowPolyDioramaPainter(
-                        playerGx: _playerGx,
-                        playerGy: _playerGy,
-                        isCarryingSuitcase: widget.playerLife.isCarryingSuitcase,
-                        rainDrops: _rainDrops,
-                      ),
-                    ),
-                  ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // 9:16 手機比例自我適配容器
+            final isWide = (constraints.maxWidth / constraints.maxHeight) > (9.0 / 16.0);
+            final targetWidth = isWide
+                ? math.min(constraints.maxWidth, constraints.maxHeight * (9.0 / 16.0))
+                : constraints.maxWidth;
+            final targetHeight = constraints.maxHeight;
+
+            return Center(
+              child: Container(
+                width: targetWidth,
+                height: targetHeight,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF14131A),
+                  borderRadius: isWide ? BorderRadius.circular(28) : BorderRadius.zero,
+                  border: isWide ? Border.all(color: const Color(0xFF27272A), width: 3.5) : null,
+                  boxShadow: isWide
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.8),
+                            blurRadius: 40,
+                            spreadRadius: 6,
+                          ),
+                        ]
+                      : null,
                 ),
-
-                // 2. 頂部極簡手機 HUD (Energy, Hunger, Cash, Quest)
-                Positioned(
-                  top: 10,
-                  left: 14,
-                  right: 14,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 上排：生理指標與個人現金
-                      Row(
+                child: ClipRRect(
+                  borderRadius: isWide ? BorderRadius.circular(24) : BorderRadius.zero,
+                  child: AnimatedBuilder(
+                    animation: widget.playerLife,
+                    builder: (context, _) {
+                      return Stack(
                         children: [
-                          // 體力條 (ENERGY 藍色進度條)
-                          Expanded(
-                            child: _buildHudBar(
-                              icon: Icons.flash_on_rounded,
-                              iconColor: const Color(0xFF38BDF8),
-                              label: 'ENERGY',
-                              value: '${widget.playerLife.energy.toInt()}/100',
-                              ratio: widget.playerLife.energy / 100.0,
-                              barColor: const Color(0xFF38BDF8),
+                          // 1. 純淨 3D Low-Poly 微縮原畫底圖 (滿版填滿 9:16 容器)
+                          Positioned.fill(
+                            child: Image.asset(
+                              'assets/images/urban_diorama_clean.jpg',
+                              fit: BoxFit.cover,
+                              alignment: Alignment.center,
                             ),
                           ),
-                          const SizedBox(width: 8),
 
-                          // 飽食條 (HUNGER 橘色進度條)
-                          Expanded(
-                            child: _buildHudBar(
-                              icon: Icons.restaurant_rounded,
-                              iconColor: const Color(0xFFFB923C),
-                              label: 'HUNGER',
-                              value: '${widget.playerLife.hunger.toInt()}/100',
-                              ratio: widget.playerLife.hunger / 100.0,
-                              barColor: const Color(0xFFFB923C),
+                          // 2. 即時雨滴與漣漪粒子物理層 (動態 CustomPaint)
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: _AtmosphericFxPainter(
+                                rainParticles: _rainParticles,
+                                ripples: _ripples,
+                                pulseRatio: _animCtrl.value,
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 8),
 
-                          // 現金徽章 (CASH 金色)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1C1A24).withValues(alpha: 0.9),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: const Color(0xFFFFB800).withValues(alpha: 0.5)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFFFFB800).withValues(alpha: 0.2),
-                                  blurRadius: 8,
-                                ),
-                              ],
+                          // 3. 立體互動熱區標籤 (Interactive Hotspots)
+                          // [熱區 A] CITY MART 門市 (Top 45%, Left 12%)
+                          Positioned(
+                            top: targetHeight * 0.44,
+                            left: targetWidth * 0.10,
+                            child: _buildInteractiveTag(
+                              icon: Icons.storefront_rounded,
+                              title: 'CITY MART',
+                              subtitle: '老鋪 (24H)',
+                              color: const Color(0xFFF97316),
+                              pulse: _animCtrl.value,
+                              onTap: _showCityMartDialog,
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text('🪙 ', style: TextStyle(fontSize: 12)),
-                                Text(
-                                  _currency.format(widget.playerLife.personalCash),
-                                  style: const TextStyle(
-                                    color: Color(0xFFFFB800),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                    fontFeatures: [FontFeature.tabularFigures()],
-                                  ),
-                                ),
-                              ],
+                          ),
+
+                          // [熱區 B] 街角出租套房 (Top 22%, Left 48%)
+                          Positioned(
+                            top: targetHeight * 0.22,
+                            left: targetWidth * 0.46,
+                            child: _buildInteractiveTag(
+                              icon: Icons.bed_rounded,
+                              title: '出租套房',
+                              subtitle: '折疊床・回滿體力',
+                              color: const Color(0xFF38BDF8),
+                              pulse: _animCtrl.value,
+                              onTap: _showApartmentSleepDialog,
                             ),
+                          ),
+
+                          // [熱區 C] 城市計程車 (Top 51%, Left 58%)
+                          Positioned(
+                            top: targetHeight * 0.50,
+                            left: targetWidth * 0.56,
+                            child: _buildInteractiveTag(
+                              icon: Icons.local_taxi_rounded,
+                              title: '計程車站',
+                              subtitle: '前往其他商圈',
+                              color: const Color(0xFFFACC15),
+                              pulse: _animCtrl.value,
+                              onTap: _showTaxiDialog,
+                            ),
+                          ),
+
+                          // [熱區 D] 主角定位光圈 (Top 67%, Left 38%)
+                          Positioned(
+                            top: targetHeight * 0.66,
+                            left: targetWidth * 0.36,
+                            child: _buildProtagonistBeacon(pulse: _animCtrl.value),
+                          ),
+
+                          // 4. 頂部 1:1 概念圖精緻 HUD
+                          Positioned(
+                            top: 12,
+                            left: 14,
+                            right: 14,
+                            child: _buildTopHud(),
+                          ),
+
+                          // 5. 左下角生存快捷操作 (便當/打工)
+                          Positioned(
+                            bottom: 22,
+                            left: 16,
+                            child: _buildQuickSurvivalButtons(),
+                          ),
+
+                          // 6. 右下角公務手機 SmartOS 懸浮鍵 (含未讀簡訊紅點與氣泡)
+                          Positioned(
+                            bottom: 22,
+                            right: 16,
+                            child: _buildSmartPhoneWidget(),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      // 下排：主線任務指引膠囊
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: Row(
-                          children: [
-                            const Text('📜 ', style: TextStyle(fontSize: 13)),
-                            Expanded(
-                              child: Text(
-                                widget.playerLife.currentQuest,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Text(
-                              widget.playerLife.timeFormatted,
-                              style: const TextStyle(color: Colors.white60, fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
-
-                // 3. 右下角懸浮智慧手機 SmartOS 按鈕 (附未讀紅點與提示氣泡)
-                Positioned(
-                  bottom: 20,
-                  right: 16,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 未讀簡訊提示氣泡
-                      if (!widget.playerLife.hasReadUncleMessage)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          constraints: const BoxConstraints(maxWidth: 220),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1E293B),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFF38BDF8)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.5),
-                                blurRadius: 10,
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('👴 ', style: TextStyle(fontSize: 14)),
-                              Expanded(
-                                child: Text(
-                                  '叔叔發來新簡訊！點擊查看',
-                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      // 智慧手機按鈕
-                      GestureDetector(
-                        onTap: () => SmartPhoneModal.show(context, widget.playerLife),
-                        child: Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF27272A), Color(0xFF09090B)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: !widget.playerLife.hasReadUncleMessage ? const Color(0xFF38BDF8) : Colors.white24,
-                              width: 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: (!widget.playerLife.hasReadUncleMessage
-                                    ? const Color(0xFF38BDF8).withValues(alpha: 0.4)
-                                    : Colors.black.withValues(alpha: 0.5)),
-                                blurRadius: 14,
-                                spreadRadius: 2,
-                              ),
-                            ],
-                          ),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              const Icon(Icons.phone_iphone_rounded, color: Colors.white, size: 30),
-                              // 紅色未讀通知角標
-                              if (!widget.playerLife.hasReadUncleMessage || !widget.playerLife.hasClaimedUncleGift)
-                                Positioned(
-                                  top: 10,
-                                  right: 12,
-                                  child: Container(
-                                    width: 12,
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFEF4444),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white, width: 2),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // 4. 左下角操作提示
-                Positioned(
-                  bottom: 24,
-                  left: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      '💡 單指點擊人行道移動主角',
-                      style: TextStyle(color: Colors.white70, fontSize: 11),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             );
           },
         ),
@@ -424,20 +514,111 @@ class _UrbanGameScreenState extends State<UrbanGameScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildHudBar({
+  // --- UI 子元件建置 ---
+
+  /// 頂部 1:1 概念圖風格 HUD
+  Widget _buildTopHud() {
+    final life = widget.playerLife;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 上排：三大指標
+        Row(
+          children: [
+            // ⚡ ENERGY
+            Expanded(
+              child: _buildVitalPill(
+                icon: Icons.flash_on_rounded,
+                iconColor: const Color(0xFF38BDF8),
+                label: 'ENERGY',
+                valueText: '${life.energy.toInt()}/100',
+                ratio: (life.energy / 100.0).clamp(0.0, 1.0),
+                fillGradient: const [Color(0xFF38BDF8), Color(0xFF0284C7)],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 🍴 HUNGER
+            Expanded(
+              child: _buildVitalPill(
+                icon: Icons.restaurant_rounded,
+                iconColor: const Color(0xFFFB923C),
+                label: 'HUNGER',
+                valueText: '${life.hunger.toInt()}/100',
+                ratio: (life.hunger / 100.0).clamp(0.0, 1.0),
+                fillGradient: const [Color(0xFFFB923C), Color(0xFFEA580C)],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 🪙 CASH
+            _buildCashPill(life.personalCash),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // 下排：主線任務指引條
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.80),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Text('📜 ', style: TextStyle(fontSize: 13)),
+              Expanded(
+                child: Text(
+                  life.currentQuest,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                life.timeFormatted,
+                style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVitalPill({
     required IconData icon,
     required Color iconColor,
     required String label,
-    required String value,
+    required String valueText,
     required double ratio,
-    required Color barColor,
+    required List<Color> fillGradient,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1A24).withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white12),
+        color: const Color(0xFF181724).withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: iconColor.withValues(alpha: 0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 8,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -448,22 +629,45 @@ class _UrbanGameScreenState extends State<UrbanGameScreen> with SingleTickerProv
             children: [
               Row(
                 children: [
-                  Icon(icon, color: iconColor, size: 12),
-                  const SizedBox(width: 3),
-                  Text(label, style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
+                  Icon(icon, color: iconColor, size: 14),
+                  const SizedBox(width: 4),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: iconColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
                 ],
               ),
-              Text(value, style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold)),
+              Text(
+                valueText,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 4),
           ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: ratio.clamp(0.0, 1.0),
-              minHeight: 4,
-              backgroundColor: Colors.white10,
-              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            borderRadius: BorderRadius.circular(4),
+            child: Stack(
+              children: [
+                Container(height: 5, color: Colors.white12),
+                FractionallySizedBox(
+                  widthFactor: ratio,
+                  child: Container(
+                    height: 5,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: fillGradient),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -471,401 +675,365 @@ class _UrbanGameScreenState extends State<UrbanGameScreen> with SingleTickerProv
     );
   }
 
-  void _handleCanvasTap(Offset localPos) {
-    const double tileW = 46.0;
-    const double tileH = 23.0;
-    final cx = MediaQuery.of(context).size.width / 2;
-    const cy = 180.0;
-
-    final dx = localPos.dx - cx;
-    final dy = localPos.dy - cy;
-
-    final gx = (dx / (tileW / 2) + dy / (tileH / 2)) / 2;
-    final gy = (dy / (tileH / 2) - dx / (tileW / 2)) / 2;
-
-    // 設定主角目標移動座標 (限制在人行道與街區範圍)
-    setState(() {
-      _targetGx = gx.clamp(0.5, 5.5);
-      _targetGy = gy.clamp(0.5, 5.5);
-      _isMoving = true;
-    });
-  }
-}
-
-// -----------------------------------------------------------------------------
-// 風格二：現代都會 Low-Poly 3D 微縮立體模型 CustomPainter
-// -----------------------------------------------------------------------------
-class _LowPolyDioramaPainter extends CustomPainter {
-  final double playerGx;
-  final double playerGy;
-  final bool isCarryingSuitcase;
-  final List<_RainDrop> rainDrops;
-
-  _LowPolyDioramaPainter({
-    required this.playerGx,
-    required this.playerGy,
-    required this.isCarryingSuitcase,
-    required this.rainDrops,
-  });
-
-  static const double tileW = 46.0;
-  static const double tileH = 23.0;
-
-  Offset _iso(double gx, double gy, double cx, double cy, {double height = 0}) {
-    final x = cx + (gx - gy) * (tileW / 2);
-    final y = cy + (gx + gy) * (tileH / 2) - height;
-    return Offset(x, y);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    const cy = 180.0;
-
-    // 1. 黃昏暮光天空背景漸層 (Dusk Twilight)
-    final bgPaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0xFF2E2638), Color(0xFF181520), Color(0xFF0F0E14)],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
-
-    // 2. 遠景低多邊形大樓剪影 (Distant Low-Poly City Skyline)
-    _drawSkyline(canvas, size);
-
-    // 3. 地面柏油路與人行道路緣石 (Wet Asphalt Street & Sidewalk)
-    _drawStreetAndSidewalk(canvas, cx, cy);
-
-    // 4. 斑馬線與路面水坑倒影 (Crosswalk & Water Reflection)
-    _drawCrosswalkAndPuddles(canvas, cx, cy);
-
-    // 5. 實體建築與物件 (Y-Sorting 深度排序繪製)
-    final List<_DioramaEntity> entities = [];
-
-    // (1) 轉角超商 (City Mart) —— 帶有前牆剖面透視
-    entities.add(
-      _DioramaEntity(
-        sortDepth: 1.5 + 4.0,
-        render: (c) => _drawCutawayStore(c, cx, cy),
+  Widget _buildCashPill(double cash) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2E2412), Color(0xFF1E160A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFBBF24).withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFF59E0B).withValues(alpha: 0.25),
+            blurRadius: 10,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.monetization_on_rounded, color: Color(0xFFFBBF24), size: 16),
+          const SizedBox(width: 5),
+          Text(
+            _currency.format(cash),
+            style: const TextStyle(
+              color: Color(0xFFFDE68A),
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
       ),
     );
-
-    // (2) 叔叔的出租老舊公寓 (Apartment Building)
-    entities.add(
-      _DioramaEntity(
-        sortDepth: 1.0 + 1.5,
-        render: (c) => _drawApartmentBuilding(c, cx, cy),
-      ),
-    );
-
-    // (3) 街頭黃色低多邊形計程車 (Yellow Taxi)
-    entities.add(
-      _DioramaEntity(
-        sortDepth: 4.5 + 2.0,
-        render: (c) => _drawLowPolyTaxi(c, cx, cy),
-      ),
-    );
-
-    // (4) 立體路燈 (Street Lamp) 投射暖黃光錐
-    entities.add(
-      _DioramaEntity(
-        sortDepth: 3.0 + 3.0,
-        render: (c) => _drawStreetLamp(c, cx, cy),
-      ),
-    );
-
-    // (5) 主角小人 (提著皮箱走動)
-    entities.add(
-      _DioramaEntity(
-        sortDepth: playerGx + playerGy,
-        render: (c) => _drawProtagonist(c, cx, cy),
-      ),
-    );
-
-    // 依深度排序並繪製
-    entities.sort((a, b) => a.sortDepth.compareTo(b.sortDepth));
-    for (final e in entities) {
-      e.render(canvas);
-    }
-
-    // 6. 雨絲微粒動畫 (Raindrops)
-    final rainPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.28)
-      ..strokeWidth = 1.2;
-    for (final r in rainDrops) {
-      canvas.drawLine(Offset(r.x, r.y), Offset(r.x - 3, r.y + r.length), rainPaint);
-    }
   }
 
-  void _drawSkyline(Canvas canvas, Size size) {
-    final buildingPaint = Paint()..color = const Color(0xFF1E1C26);
-    final litWindow = Paint()..color = const Color(0xFFFDE047).withValues(alpha: 0.7);
+  /// 互動標籤卡片
+  Widget _buildInteractiveTag({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required double pulse,
+    required VoidCallback onTap,
+  }) {
+    final glow = 0.4 + 0.3 * math.sin(pulse * math.pi * 2);
 
-    // 遠處幾棟高低錯落的大樓方塊
-    final bldgs = [
-      {'x': 10.0, 'w': 50.0, 'h': 160.0},
-      {'x': 70.0, 'w': 70.0, 'h': 210.0},
-      {'x': 150.0, 'w': 45.0, 'h': 140.0},
-      {'x': 210.0, 'w': 80.0, 'h': 240.0},
-      {'x': 300.0, 'w': 65.0, 'h': 180.0},
-    ];
-
-    for (final b in bldgs) {
-      final rect = Rect.fromLTWH(b['x']!, 120 - b['h']!, b['w']!, b['h']!);
-      canvas.drawRect(rect, buildingPaint);
-
-      // 大樓發光小方窗
-      for (double wy = rect.top + 16; wy < rect.bottom - 20; wy += 22) {
-        for (double wx = rect.left + 8; wx < rect.right - 10; wx += 14) {
-          if ((wx + wy).toInt() % 3 != 0) {
-            canvas.drawRect(Rect.fromLTWH(wx, wy, 6, 8), litWindow);
-          }
-        }
-      }
-    }
-  }
-
-  void _drawStreetAndSidewalk(Canvas canvas, double cx, double cy) {
-    // 濕潤的深黑柏油路面
-    final roadPaint = Paint()..color = const Color(0xFF18171F);
-    final sidewalkPaint = Paint()..color = const Color(0xFF474454);
-    final curbPaint = Paint()..color = const Color(0xFF6B677C);
-
-    // 繪製 6x6 基礎網格
-    for (int gx = 0; gx < 6; gx++) {
-      for (int gy = 0; gy < 6; gy++) {
-        final p0 = _iso(gx.toDouble(), gy.toDouble(), cx, cy);
-        final p1 = _iso(gx + 1.0, gy.toDouble(), cx, cy);
-        final p2 = _iso(gx + 1.0, gy + 1.0, cx, cy);
-        final p3 = _iso(gx.toDouble(), gy + 1.0, cx, cy);
-
-        final path = Path()
-          ..moveTo(p0.dx, p0.dy)
-          ..lineTo(p1.dx, p1.dy)
-          ..lineTo(p2.dx, p2.dy)
-          ..lineTo(p3.dx, p3.dy)
-          ..close();
-
-        // 劃分人行道 (靠近建築側 gx <= 3 && gy <= 3) 與馬路
-        final isSidewalk = (gx <= 3 && gy <= 3);
-        canvas.drawPath(path, isSidewalk ? sidewalkPaint : roadPaint);
-
-        // 人行道路緣石凸起邊界
-        if ((gx == 3 && gy <= 3) || (gy == 3 && gx <= 3)) {
-          canvas.drawLine(p1, p2, curbPaint..strokeWidth = 2.0);
-        }
-      }
-    }
-  }
-
-  void _drawCrosswalkAndPuddles(Canvas canvas, double cx, double cy) {
-    // 斑馬線白色低多邊形色塊
-    final stripePaint = Paint()..color = Colors.white.withValues(alpha: 0.85);
-
-    for (int i = 0; i < 4; i++) {
-      final p0 = _iso(3.2 + (i * 0.4), 4.0, cx, cy);
-      final p1 = _iso(3.4 + (i * 0.4), 4.0, cx, cy);
-      final p2 = _iso(3.4 + (i * 0.4), 5.2, cx, cy);
-      final p3 = _iso(3.2 + (i * 0.4), 5.2, cx, cy);
-
-      final path = Path()
-        ..moveTo(p0.dx, p0.dy)
-        ..lineTo(p1.dx, p1.dy)
-        ..lineTo(p2.dx, p2.dy)
-        ..lineTo(p3.dx, p3.dy)
-        ..close();
-      canvas.drawPath(path, stripePaint);
-    }
-
-    // 路面水窪倒影 (黃色路燈光暈映在水面上)
-    final puddlePaint = Paint()
-      ..color = const Color(0xFFFDE047).withValues(alpha: 0.25)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    final pPuddle = _iso(3.6, 3.8, cx, cy);
-    canvas.drawOval(Rect.fromCenter(center: pPuddle, width: 36, height: 16), puddlePaint);
-  }
-
-  // --- 核心實體：轉角超商 (City Mart) 室內無縫剖面 ---
-  void _drawCutawayStore(Canvas canvas, double cx, double cy) {
-    final base = _iso(1.5, 4.0, cx, cy);
-
-    // 1. 超商外框立體幾何建築
-    final wallPaint = Paint()..color = const Color(0xFF2C2836);
-    final glassInterior = Paint()..color = const Color(0xFFFFFBEB).withValues(alpha: 0.88); // 暖白室內光
-
-    // 室內發光區域 (剖面無前牆)
-    canvas.drawRect(
-      Rect.fromCenter(center: Offset(base.dx, base.dy - 38), width: 74, height: 60),
-      glassInterior,
-    );
-
-    // 外牆邊框
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset(base.dx, base.dy - 40), width: 78, height: 68),
-        const Radius.circular(4),
-      ),
-      wallPaint..style = PaintingStyle.stroke..strokeWidth = 3,
-    );
-
-    // 2. 室內實體物件：木質收銀台、收銀機與瓦楞紙箱
-    final counterWood = Paint()..color = const Color(0xFF854D0E);
-    canvas.drawRect(Rect.fromLTWH(base.dx - 26, base.dy - 32, 24, 14), counterWood);
-
-    // 收銀機 (亮藍螢幕)
-    final posPaint = Paint()..color = const Color(0xFF38BDF8);
-    canvas.drawRect(Rect.fromLTWH(base.dx - 22, base.dy - 40, 10, 8), posPaint);
-
-    // 地上堆疊的瓦楞紙箱 (Cardboard Boxes)
-    final boxPaint = Paint()..color = const Color(0xFFB45309);
-    final boxShadow = Paint()..color = const Color(0xFF78350F);
-    canvas.drawRect(Rect.fromLTWH(base.dx + 4, base.dy - 24, 12, 10), boxPaint);
-    canvas.drawRect(Rect.fromLTWH(base.dx + 16, base.dy - 22, 10, 8), boxPaint);
-    canvas.drawRect(Rect.fromLTWH(base.dx + 8, base.dy - 32, 10, 8), boxShadow); // 疊在上方
-
-    // 3. 屋頂發光霓虹招牌 (CITY MART · OPEN 24HR)
-    final signBg = Paint()..color = const Color(0xFF0F172A);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(base.dx - 36, base.dy - 78, 72, 16), const Radius.circular(3)),
-      signBg,
-    );
-
-    final textPainter = TextPainter(
-      text: const TextSpan(
-        text: 'CITY MART',
-        style: TextStyle(
-          color: Color(0xFFF97316),
-          fontSize: 8.5,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
+    return GestureDetector(
+      onTap: () {
+        AudioService().playScanBeep();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF18181B).withValues(alpha: 0.90),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.8), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: glow),
+              blurRadius: 12,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 14),
+            ),
+            const SizedBox(width: 7),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(color: color, fontSize: 9.5),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    textPainter.paint(canvas, Offset(base.dx - textPainter.width / 2, base.dy - 75));
+    );
   }
 
-  void _drawApartmentBuilding(Canvas canvas, double cx, double cy) {
-    final base = _iso(1.0, 1.5, cx, cy);
+  /// 主角定位信標
+  Widget _buildProtagonistBeacon({required double pulse}) {
+    final scale = 1.0 + 0.15 * math.sin(pulse * math.pi * 2);
+    final life = widget.playerLife;
 
-    // 紅磚色低多邊形老公寓
-    final brickPaint = Paint()..color = const Color(0xFF7F1D1D);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(base.dx - 28, base.dy - 80, 56, 75), const Radius.circular(4)),
-      brickPaint,
-    );
-
-    // 發光窗戶
-    final windowPaint = Paint()..color = const Color(0xFFFDE047).withValues(alpha: 0.8);
-    for (int y = 0; y < 3; y++) {
-      for (int x = 0; x < 2; x++) {
-        canvas.drawRect(
-          Rect.fromLTWH(base.dx - 20 + (x * 24), base.dy - 72 + (y * 22), 14, 12),
-          windowPaint,
+    return GestureDetector(
+      onTap: () {
+        AudioService().playScanBeep();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF1E293B),
+            content: Text(
+              life.isCarryingSuitcase
+                  ? '💼 主角：手提著皮箱初抵大都會，長途跋涉有點累了，請先前往套房折疊床睡一覺。'
+                  : '👤 主角：已安頓在出租公寓，準備在這座大都會大展拳腳！',
+            ),
+          ),
         );
-      }
-    }
-
-    // 門口門墊 (藏鑰匙處)
-    final matPaint = Paint()..color = const Color(0xFF10B981);
-    canvas.drawRect(Rect.fromLTWH(base.dx - 8, base.dy - 6, 16, 6), matPaint);
-  }
-
-  void _drawLowPolyTaxi(Canvas canvas, double cx, double cy) {
-    final pos = _iso(4.5, 2.0, cx, cy);
-
-    // 黃色計程車身
-    final taxiPaint = Paint()..color = const Color(0xFFEAB308);
-    final taxiRoof = Paint()..color = const Color(0xFFCA8A04);
-    final wheelPaint = Paint()..color = const Color(0xFF0F172A);
-
-    // 車體
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(pos.dx, pos.dy - 10), width: 34, height: 14), const Radius.circular(3)),
-      taxiPaint,
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Transform.scale(
+            scale: scale,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFBBF24),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFBBF24).withValues(alpha: 0.6),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(life.isCarryingSuitcase ? '💼 ' : '👤 ', style: const TextStyle(fontSize: 10)),
+                  Text(
+                    life.isCarryingSuitcase ? '提著皮箱' : '主角',
+                    style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFFFBBF24), size: 16),
+        ],
+      ),
     );
-    // 車頂車窗
-    canvas.drawRect(Rect.fromLTWH(pos.dx - 10, pos.dy - 19, 20, 9), taxiRoof);
-    // 輪子
-    canvas.drawCircle(Offset(pos.dx - 11, pos.dy - 3), 3.5, wheelPaint);
-    canvas.drawCircle(Offset(pos.dx + 11, pos.dy - 3), 3.5, wheelPaint);
-    // 車頂燈
-    canvas.drawRect(Rect.fromLTWH(pos.dx - 4, pos.dy - 23, 8, 4), Paint()..color = Colors.white);
   }
 
-  void _drawStreetLamp(Canvas canvas, double cx, double cy) {
-    final pos = _iso(3.0, 3.0, cx, cy);
+  /// 左下角生存快捷鍵
+  Widget _buildQuickSurvivalButtons() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 🍱 便當
+        GestureDetector(
+          onTap: _showFoodDialog,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1B29).withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFFB923C).withValues(alpha: 0.7)),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('🍱 ', style: TextStyle(fontSize: 13)),
+                Text('吃便當', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
 
-    // 燈桿
-    final polePaint = Paint()
-      ..color = const Color(0xFF334155)
-      ..strokeWidth = 2.5;
-    canvas.drawLine(pos, Offset(pos.dx, pos.dy - 44), polePaint);
-
-    // 燈罩
-    canvas.drawCircle(Offset(pos.dx + 3, pos.dy - 44), 4, Paint()..color = const Color(0xFFFDE047));
-
-    // 地面暖黃光錐暈染 (Warm Light Cone)
-    final glowPaint = Paint()
-      ..color = const Color(0xFFFDE047).withValues(alpha: 0.18)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-    canvas.drawOval(Rect.fromCenter(center: Offset(pos.dx + 10, pos.dy + 4), width: 50, height: 24), glowPaint);
-  }
-
-  void _drawProtagonist(Canvas canvas, double cx, double cy) {
-    final pos = _iso(playerGx, playerGy, cx, cy);
-
-    // 主角腳下陰影
-    final shadowPaint = Paint()..color = Colors.black.withValues(alpha: 0.45);
-    canvas.drawOval(Rect.fromCenter(center: Offset(pos.dx, pos.dy + 2), width: 14, height: 6), shadowPaint);
-
-    // 主角風衣 (深棕駝色)
-    final coatPaint = Paint()..color = const Color(0xFF78350F);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(pos.dx - 5, pos.dy - 20, 10, 14), const Radius.circular(2)),
-      coatPaint,
+        // 💼 打工
+        GestureDetector(
+          onTap: _showCityMartDialog,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1B29).withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.7)),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('💼 ', style: TextStyle(fontSize: 13)),
+                Text('超商打工', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
-
-    // 頭部
-    canvas.drawCircle(Offset(pos.dx, pos.dy - 24), 4.5, Paint()..color = const Color(0xFFFBBF24));
-
-    // 手提旅行皮箱 (Suitcase)
-    if (isCarryingSuitcase) {
-      final suitcasePaint = Paint()..color = const Color(0xFF92400E);
-      final brassLatch = Paint()..color = const Color(0xFFFDE047);
-
-      // 皮箱體
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(Rect.fromLTWH(pos.dx + 5, pos.dy - 15, 8, 10), const Radius.circular(1.5)),
-        suitcasePaint,
-      );
-      // 銅鎖扣
-      canvas.drawRect(Rect.fromLTWH(pos.dx + 7.5, pos.dy - 12, 3, 2), brassLatch);
-    }
   }
 
-  @override
-  bool shouldRepaint(covariant _LowPolyDioramaPainter oldDelegate) => true;
+  /// 右下角公務手機 SmartOS 按鈕
+  Widget _buildSmartPhoneWidget() {
+    final hasUnread = !widget.playerLife.hasReadUncleMessage;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 未讀簡訊提示氣泡
+        if (hasUnread)
+          GestureDetector(
+            onTap: () => SmartPhoneModal.show(context, widget.playerLife),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              constraints: const BoxConstraints(maxWidth: 220),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF38BDF8)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                    blurRadius: 12,
+                  ),
+                ],
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('👴 ', style: TextStyle(fontSize: 13)),
+                  Expanded(
+                    child: Text(
+                      '叔叔發來新簡訊！點擊查看',
+                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // 智慧手機外觀按鈕
+        GestureDetector(
+          onTap: () => SmartPhoneModal.show(context, widget.playerLife),
+          child: Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF27272A), Color(0xFF09090B)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFF71717A), width: 2.2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.8),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Icon(Icons.smartphone_rounded, color: Colors.white, size: 28),
+
+                // 未讀紅點
+                if (hasUnread)
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.black, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _DioramaEntity {
-  final double sortDepth;
-  final void Function(Canvas) render;
+// --- 物理粒子模型與 Painter ---
 
-  _DioramaEntity({required this.sortDepth, required this.render});
-}
-
-class _RainDrop {
+class _RainParticle {
   double x;
   double y;
   final double length;
   final double speed;
 
-  _RainDrop({
-    required this.x,
-    required this.y,
-    required this.length,
-    required this.speed,
+  _RainParticle({required this.x, required this.y, required this.length, required this.speed});
+}
+
+class _RippleEffect {
+  double x;
+  double y;
+  double radius = 1.0;
+  double opacity = 0.5;
+
+  _RippleEffect({required this.x, required this.y});
+}
+
+class _AtmosphericFxPainter extends CustomPainter {
+  final List<_RainParticle> rainParticles;
+  final List<_RippleEffect> ripples;
+  final double pulseRatio;
+
+  _AtmosphericFxPainter({
+    required this.rainParticles,
+    required this.ripples,
+    required this.pulseRatio,
   });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 1. 細雨雨絲
+    final rainPaint = Paint()
+      ..color = const Color(0xFF93C5FD).withValues(alpha: 0.45)
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+
+    for (final r in rainParticles) {
+      if (r.x >= 0 && r.x <= size.width && r.y >= 0 && r.y <= size.height) {
+        canvas.drawLine(
+          Offset(r.x, r.y),
+          Offset(r.x - 3.5, r.y + r.length),
+          rainPaint,
+        );
+      }
+    }
+
+    // 2. 地面水窪微漣漪
+    for (final rip in ripples) {
+      if (rip.x >= 0 && rip.x <= size.width && rip.y >= 0 && rip.y <= size.height) {
+        final ripplePaint = Paint()
+          ..color = const Color(0xFFE2E8F0).withValues(alpha: rip.opacity)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0;
+        canvas.drawOval(
+          Rect.fromCenter(center: Offset(rip.x, rip.y), width: rip.radius * 3.0, height: rip.radius * 1.5),
+          ripplePaint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AtmosphericFxPainter oldDelegate) => true;
 }
