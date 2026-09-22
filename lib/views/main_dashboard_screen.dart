@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_state.dart';
+import '../services/audio_service.dart';
 import 'tabs/hr_tab.dart';
 import 'tabs/inventory_tab.dart';
 import 'tabs/overview_tab.dart';
@@ -92,11 +93,12 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
     final currency = NumberFormat.currency(symbol: '\$', decimalDigits: 0);
     final c = state.company;
     final open = state.isStoreOpen;
+    final isDayTime = c.hour >= 6 && c.hour <= 18;
 
     return AppBar(
-      elevation: 0,
+      elevation: 2,
       backgroundColor: AppColors.surface,
-      toolbarHeight: 62,
+      toolbarHeight: 66,
       titleSpacing: AppSpacing.lg,
       title: Row(
         children: [
@@ -107,6 +109,12 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               children: [
                 Row(
                   children: [
+                    Icon(
+                      isDayTime ? Icons.wb_sunny_rounded : Icons.nightlight_round,
+                      size: 14,
+                      color: isDayTime ? const Color(0xFFF59E0B) : const Color(0xFF818CF8),
+                    ),
+                    const SizedBox(width: 4),
                     Text(c.timeFormatted,
                         style: AppText.tabular.copyWith(
                             fontSize: 14,
@@ -124,19 +132,36 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                 const SizedBox(height: 3),
                 Row(
                   children: [
-                    Text(currency.format(c.cash),
-                        style: AppText.tabular.copyWith(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: c.cash < 0 ? AppColors.critical : AppColors.textSecondary,
-                        )),
-                    const SizedBox(width: AppSpacing.md),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFB800).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFFFB800).withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('🪙 ', style: TextStyle(fontSize: 10)),
+                          Text(
+                            currency.format(c.cash),
+                            style: AppText.tabular.copyWith(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: c.cash < 0 ? AppColors.critical : const Color(0xFFFFB800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
                     Icon(Icons.star_rounded,
-                        size: 12, color: AppColors.forReputation(c.reputation)),
-                    const SizedBox(width: 3),
+                        size: 13, color: AppColors.forReputation(c.reputation)),
+                    const SizedBox(width: 2),
                     Text('${c.reputation}',
                         style: AppText.tabular.copyWith(
                             fontSize: 12,
+                            fontWeight: FontWeight.bold,
                             color: AppColors.forReputation(c.reputation))),
                   ],
                 ),
@@ -146,6 +171,20 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         ],
       ),
       actions: [
+        // 音效開關切換
+        IconButton(
+          tooltip: AudioService().isMuted ? '開啟音效' : '靜音',
+          icon: Icon(
+            AudioService().isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+            size: 20,
+            color: AudioService().isMuted ? AppColors.textMuted : AppColors.accent,
+          ),
+          onPressed: () {
+            setState(() {
+              AudioService().toggleMute();
+            });
+          },
+        ),
         _TimeButton(
           tooltip: '推進 1 小時',
           icon: Icons.skip_next_rounded,

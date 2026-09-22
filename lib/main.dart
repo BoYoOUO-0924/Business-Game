@@ -4,8 +4,11 @@ import 'providers/game_state.dart';
 import 'views/main_dashboard_screen.dart';
 import 'views/theme/app_theme.dart';
 
-void main() {
+import 'services/audio_service.dart';
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AudioService().init();
   runApp(const BusinessSimApp());
 }
 

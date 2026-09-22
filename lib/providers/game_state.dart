@@ -1338,6 +1338,13 @@ class GameState extends ChangeNotifier {
     return max(0, fixture.currentCapacity - shelfUsed(fixture.id));
   }
 
+  /// 計算指定設備 ID 的剩餘容量空間
+  int remainingShelfSpaceForFixture(String fixtureId) {
+    final fixture = fixtures.firstWhere((f) => f.id == fixtureId, orElse: () => fixtures.first);
+    if (!fixture.isPurchased) return 0;
+    return max(0, fixture.currentCapacity - shelfUsed(fixture.id));
+  }
+
   /// 補貨時實際適用的供應商：品牌供應商解鎖後才享折扣，
   /// 否則回頭找萬用在地貨源老李（原價，但隨時買得到）。
   Supplier effectiveSupplierFor(InventoryItem item) {
