@@ -120,7 +120,7 @@ void main() {
       expect(find.textContaining('叔叔發來的新簡訊'), findsOneWidget);
 
       // 檢查右下角未讀簡訊提示氣泡
-      expect(find.textContaining('叔叔發來新簡訊'), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
     });
 
     testWidgets('智慧手機 SmartPhoneModal 顯示叔叔訊息並可領取 \$10,000 啟動金', (tester) async {
