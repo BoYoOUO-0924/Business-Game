@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_state.dart';
 import '../services/audio_service.dart';
+import 'components/tycoon_phone_modal.dart';
+import 'tabs/city_gis_tab.dart';
 import 'tabs/hr_tab.dart';
 import 'tabs/inventory_tab.dart';
 import 'tabs/overview_tab.dart';
@@ -39,7 +41,8 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
 
     final tabs = [
       OverviewTab(onNavigateTab: _goTo),
-      InventoryTab(onGoToNegotiate: () => _goTo(2)),
+      const CityGisTab(),
+      InventoryTab(onGoToNegotiate: () => _goTo(3)),
       const SourcingMapTab(),
       const HrTab(),
       const StoreTab(),
@@ -65,14 +68,19 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             label: '總覽',
           ),
           NavigationDestination(
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map_rounded),
+            label: '商圈擴張',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.inventory_2_outlined),
             selectedIcon: Icon(Icons.inventory_2_rounded),
             label: '進銷存',
           ),
           NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            selectedIcon: Icon(Icons.map_rounded),
-            label: '批發地圖',
+            icon: Icon(Icons.handshake_outlined),
+            selectedIcon: Icon(Icons.handshake_rounded),
+            label: '批發談判',
           ),
           NavigationDestination(
             icon: Icon(Icons.people_alt_outlined),
@@ -82,7 +90,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
           NavigationDestination(
             icon: Icon(Icons.storefront_outlined),
             selectedIcon: Icon(Icons.storefront_rounded),
-            label: '門市',
+            label: '門市設備',
           ),
         ],
       ),
@@ -171,6 +179,50 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         ],
       ),
       actions: [
+        // 公務手機 SmartOS (含 Fred 叔叔贊助未讀紅點)
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              tooltip: '公務手機 SmartOS (商情與天使投資)',
+              icon: const Icon(Icons.smartphone_rounded, color: Color(0xFF38BDF8), size: 22),
+              onPressed: () => TycoonPhoneModal.show(context),
+            ),
+            if (!state.hasClaimedUncleGift)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
+        ),
+
+        // 一鍵智能補貨快捷鍵
+        IconButton(
+          tooltip: '一鍵全品項安全庫存補貨',
+          icon: const Icon(Icons.flash_auto_rounded, color: Color(0xFFFBBF24), size: 20),
+          onPressed: state.isBankrupt
+              ? null
+              : () {
+                  final count = state.autoRestockSafeStock();
+                  if (context.mounted) {
+                    if (count > 0) {
+                      AudioService().playRestock();
+                      _toast(context, '📦 智能補貨完成！已自動進貨 $count 件低庫存品項！');
+                    } else {
+                      _toast(context, '目前庫存充裕，無需補貨');
+                    }
+                  }
+                },
+        ),
+
         // 音效開關切換
         IconButton(
           tooltip: AudioService().isMuted ? '開啟音效' : '靜音',
@@ -185,18 +237,43 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             });
           },
         ),
+
+        // 流速倍率 (1x / 3x / 8x)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: InkWell(
+            onTap: () {
+              final nextSpeed = state.autoPlaySpeed == 1 ? 2 : (state.autoPlaySpeed == 2 ? 3 : 1);
+              state.setAutoPlaySpeed(nextSpeed);
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceHigh,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
+              ),
+              child: Text(
+                state.autoPlaySpeed == 3 ? '8x' : (state.autoPlaySpeed == 2 ? '3x' : '1x'),
+                style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11.5, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ),
+
         _TimeButton(
           tooltip: '推進 1 小時',
           icon: Icons.skip_next_rounded,
           onPressed: state.isBankrupt ? null : state.advanceHour,
         ),
         _TimeButton(
-          tooltip: '快進 1 天',
+          tooltip: '快進 1 天 (跳至明日 08:00)',
           icon: Icons.fast_forward_rounded,
           onPressed: state.isBankrupt ? null : state.advanceDay,
         ),
         _TimeButton(
-          tooltip: state.isAutoPlaying ? '暫停' : '自動推進',
+          tooltip: state.isAutoPlaying ? '暫停時間' : '開始時間推進',
           icon: state.isAutoPlaying
               ? Icons.pause_circle_filled_rounded
               : Icons.play_circle_fill_rounded,

@@ -30,7 +30,7 @@ void main() {
       expect(find.textContaining('第 1 天'), findsWidgets);
       expect(find.text('營業中'), findsOneWidget);
 
-      for (final label in ['進銷存', '批發地圖', '人事排班', '門市']) {
+      for (final label in ['商圈擴張', '進銷存', '批發談判', '人事排班', '門市設備']) {
         await tester.tap(find.text(label));
         await tester.pump(const Duration(milliseconds: 100));
       }

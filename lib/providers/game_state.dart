@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chapter_quest.dart';
 import '../models/company.dart';
+import '../models/district.dart';
 import '../models/employee.dart';
 import '../models/inventory_item.dart';
 import '../models/market_event.dart';
@@ -43,6 +44,15 @@ class GameState extends ChangeNotifier {
 
   // 動態市場事件
   MarketEvent? activeEvent;
+
+  // 都會商圈體系
+  final List<District> districts = District.getInitialDistricts();
+
+  // 叔叔贊助啟動金
+  bool hasClaimedUncleGift = false;
+
+  // 時間流速倍率 (1 = 1x, 2 = 3x, 3 = 8x)
+  int autoPlaySpeed = 1;
 
   // 成就與里程碑
   late final List<Quest> quests;
@@ -1568,13 +1578,99 @@ class GameState extends ChangeNotifier {
   void toggleAutoPlay() {
     isAutoPlaying = !isAutoPlaying;
     if (isAutoPlaying) {
-      _tickerTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
+      final ms = autoPlaySpeed == 3 ? 150 : (autoPlaySpeed == 2 ? 400 : 1000);
+      _tickerTimer = Timer.periodic(Duration(milliseconds: ms), (_) {
         advanceHour();
       });
     } else {
       _tickerTimer?.cancel();
       _tickerTimer = null;
     }
+    notifyListeners();
+  }
+
+  /// 設定自動推進速度 (1 = 1x/1000ms, 2 = 3x/400ms, 3 = 8x/150ms)
+  void setAutoPlaySpeed(int speed) {
+    autoPlaySpeed = speed;
+    if (isAutoPlaying) {
+      _tickerTimer?.cancel();
+      final ms = speed == 3 ? 150 : (speed == 2 ? 400 : 1000);
+      _tickerTimer = Timer.periodic(Duration(milliseconds: ms), (_) => advanceHour());
+    }
+    notifyListeners();
+  }
+
+  /// 領取 Fred 叔叔的 \$10,000 天使啟動金
+  bool claimUncleGift() {
+    if (hasClaimedUncleGift) return false;
+    hasClaimedUncleGift = true;
+    company.cash += 10000.0;
+    businessLogs.insert(0, '💰 【天使投資】收到 Fred 叔叔發來的創業贊助啟動金 +NT\$ 10,000！');
+    notifyListeners();
+    return true;
+  }
+
+  /// 簽約進駐商圈設立分店
+  bool leaseDistrict(String districtId, String branchName) {
+    final dIndex = districts.indexWhere((d) => d.id == districtId);
+    if (dIndex == -1) return false;
+    final d = districts[dIndex];
+    if (d.isLeased) return false;
+    if (company.reputation < d.minReputationRequired) return false;
+    if (company.cash < d.depositRequired) return false;
+
+    company.cash -= d.depositRequired;
+    company.reputation = min(100, company.reputation + 4);
+    d.isLeased = true;
+    d.branchStoreName = branchName;
+    d.marketShare = 0.25;
+
+    businessLogs.insert(0, '🏢 【商業擴張】成功簽約進駐【${d.name}】！【$branchName】正式成立營運！');
+    _checkAllProgress();
+    notifyListeners();
+    return true;
+  }
+
+  /// 一鍵全品項安全庫存補貨
+  int autoRestockSafeStock() {
+    int restockedCount = 0;
+
+    for (final item in items.where((i) => i.isUnlocked)) {
+      final space = remainingShelfSpaceFor(item);
+      if (item.stock <= 15 && space > 0) {
+        final toBuy = min(space, 25);
+        if (restockItem(item.id, toBuy)) {
+          restockedCount += toBuy;
+        }
+      }
+    }
+
+    if (restockedCount > 0) {
+      businessLogs.insert(0, '📦 【智能補貨】一鍵自動為低庫存品項補貨 $restockedCount 件！');
+      notifyListeners();
+    }
+    return restockedCount;
+  }
+
+  /// 策劃發動全城 / 商圈行銷戰
+  void launchMarketingCampaign({
+    required String campaignName,
+    required double cost,
+    required double trafficMultiplier,
+    required int hours,
+  }) {
+    if (company.cash < cost) return;
+    company.cash -= cost;
+    activeEvent = MarketEvent(
+      id: 'campaign_${DateTime.now().millisecondsSinceEpoch}',
+      title: campaignName,
+      description: '大都會商業行銷宣傳生效中！全城來客數大幅飆升！',
+      icon: '📢',
+      trafficMultiplier: trafficMultiplier,
+      affectedCategory: 'all',
+      durationHours: hours,
+    );
+    businessLogs.insert(0, '📢 【行銷大戰】投入 \$${cost.toInt()} 啟動【$campaignName】，預計持續 $hours 小時！');
     notifyListeners();
   }
 

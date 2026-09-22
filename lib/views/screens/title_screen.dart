@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../models/player_life_state.dart';
 import '../../services/audio_service.dart';
 import '../main_dashboard_screen.dart';
-import 'urban_game_screen.dart';
 
 /// 遊戲開始主畫面 (Title & New Career Screen)
 class TitleScreen extends StatefulWidget {
@@ -201,22 +198,17 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
                             AudioService().playCashRegister();
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => ChangeNotifierProvider(
-                                  create: (_) => PlayerLifeState(),
-                                  child: Consumer<PlayerLifeState>(
-                                    builder: (_, life, child) => UrbanGameScreen(playerLife: life),
-                                  ),
-                                ),
+                                builder: (_) => const MainDashboardScreen(),
                               ),
                             );
                           },
                           child: const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.play_arrow_rounded, size: 24),
+                              Icon(Icons.business_center_rounded, size: 22),
                               SizedBox(width: 8),
                               Text(
-                                '開始新生涯 (第一幕：初抵大都會)',
+                                '開始商業大亨生涯 (進入指揮中心)',
                                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.5),
                               ),
                             ],
@@ -225,7 +217,7 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
                       ),
                       const SizedBox(height: 12),
 
-                      // 進入門市後台系統 (舊版五大分頁與回歸測試模式)
+                      // 進入門市營運總覽系統
                       SizedBox(
                         width: double.infinity,
                         height: 48,
@@ -246,10 +238,10 @@ class _TitleScreenState extends State<TitleScreen> with SingleTickerProviderStat
                           child: const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.storefront_rounded, size: 18),
+                              Icon(Icons.map_rounded, size: 18),
                               SizedBox(width: 8),
                               Text(
-                                '進入連鎖超商後台 (進銷存/排班/批發)',
+                                '商圈擴張與門市數據總覽',
                                 style: TextStyle(fontSize: 13),
                               ),
                             ],

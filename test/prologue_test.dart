@@ -89,8 +89,8 @@ void main() {
 
       expect(find.text('都會商雄'), findsOneWidget);
       expect(find.text('URBAN AMBITION : RETAIL TYCOON'), findsOneWidget);
-      expect(find.textContaining('開始新生涯'), findsOneWidget);
-      expect(find.textContaining('進入連鎖超商後台'), findsOneWidget);
+      expect(find.textContaining('開始商業大亨生涯'), findsOneWidget);
+      expect(find.textContaining('商圈擴張與門市數據總覽'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
