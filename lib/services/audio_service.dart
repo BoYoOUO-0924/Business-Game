@@ -23,10 +23,12 @@ class AudioService {
   Uint8List? _cashRegisterWav;
   Uint8List? _restockWav;
   Uint8List? _fanfareWav;
+  Uint8List? _footstepWav;
 
   Uint8List? get doorChimeWav => _doorChimeWav;
   Uint8List? get scanBeepWav => _scanBeepWav;
   Uint8List? get cashRegisterWav => _cashRegisterWav;
+  Uint8List? get footstepWav => _footstepWav;
 
   Future<void> init({bool enabled = true}) async {
     _enabled = enabled;
@@ -61,6 +63,19 @@ class AudioService {
     _cashRegisterWav = _synthesizeCashRegister(); // 收銀機噹 (Ka-ching)
     _restockWav = _synthesizeRestockThud(); // 補貨入架落地音
     _fanfareWav = _synthesizeFanfare(); // 通關熱烈短音
+    _footstepWav = _synthesizeFootstep(); // 角色輕微踏步音
+  }
+
+  DateTime? _lastFootstepTime;
+
+  Future<void> playFootstep() async {
+    if (_isMuted || _footstepWav == null) return;
+    final now = DateTime.now();
+    if (_lastFootstepTime != null && now.difference(_lastFootstepTime!).inMilliseconds < 260) {
+      return;
+    }
+    _lastFootstepTime = now;
+    await _playSoundBytes(_footstepWav!);
   }
 
   Future<void> playDoorChime() async {
@@ -268,6 +283,28 @@ class AudioService {
         pcmBytes.setInt16(sampleOffset * 2, sampleInt, Endian.little);
         sampleOffset++;
       }
+    }
+
+    final header = _buildWavHeader(pcmBytes.lengthInBytes, sampleRate, 1, 16);
+    final wav = Uint8List(header.length + pcmBytes.lengthInBytes);
+    wav.setAll(0, header);
+    wav.setAll(header.length, pcmBytes.buffer.asUint8List());
+    return wav;
+  }
+
+  Uint8List _synthesizeFootstep() {
+    const sampleRate = 22050;
+    const dur = 0.05;
+    final totalSamples = (sampleRate * dur).toInt();
+    final pcmBytes = ByteData(totalSamples * 2);
+
+    for (int i = 0; i < totalSamples; i++) {
+      final t = i / sampleRate;
+      final thud = math.sin(2 * math.pi * 95.0 * t) * math.exp(-60.0 * t);
+      final noise = (math.Random(i).nextDouble() * 2 - 1) * math.exp(-80.0 * t) * 0.25;
+      final sample = (thud * 0.7 + noise * 0.3);
+      final sampleInt = (sample * 16000).toInt().clamp(-32767, 32767);
+      pcmBytes.setInt16(i * 2, sampleInt, Endian.little);
     }
 
     final header = _buildWavHeader(pcmBytes.lengthInBytes, sampleRate, 1, 16);
