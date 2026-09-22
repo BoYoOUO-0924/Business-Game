@@ -102,10 +102,20 @@ class AppText {
 }
 
 ThemeData buildAppTheme() {
+  const fontFallbacks = [
+    'Microsoft JhengHei',
+    'Microsoft YaHei',
+    'PingFang SC',
+    'Segoe UI Emoji',
+    'Noto Sans TC',
+    'sans-serif',
+  ];
+
   final base = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
     scaffoldBackgroundColor: AppColors.page,
+    fontFamilyFallback: fontFallbacks,
     colorScheme: const ColorScheme.dark(
       primary: AppColors.accent,
       secondary: AppColors.good,
@@ -132,6 +142,7 @@ ThemeData buildAppTheme() {
       space: 1,
     ),
     textTheme: base.textTheme.apply(
+      fontFamilyFallback: fontFallbacks,
       bodyColor: AppColors.textPrimary,
       displayColor: AppColors.textPrimary,
     ),

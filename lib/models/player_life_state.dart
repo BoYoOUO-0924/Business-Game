@@ -16,7 +16,7 @@ class PlayerLifeState extends ChangeNotifier {
   bool _isCarryingSuitcase = true;
 
   // 當前任務目標
-  String _currentQuest = '查看右下角手機：叔叔發來的新簡訊';
+  String _currentQuest = '點擊右上角公務手機：查看叔叔發來的新簡訊';
 
   // 時間 (第 1 天 19:14 黃昏初抵)
   int _day = 1;

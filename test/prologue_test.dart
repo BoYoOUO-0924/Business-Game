@@ -26,7 +26,7 @@ void main() {
       expect(life.hour, 19);
       expect(life.minute, 14);
       expect(life.timeFormatted, '第 1 天 19:14');
-      expect(life.currentQuest, contains('查看右下角手機'));
+      expect(life.currentQuest, contains('查看叔叔發來的新簡訊'));
     });
 
     test('領取叔叔贈金流程：+NT\$10,000 且不可重複領取，任務目標推進', () {
