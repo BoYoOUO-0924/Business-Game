@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/game_state.dart';
-import 'views/main_dashboard_screen.dart';
+import 'views/screens/title_screen.dart';
 import 'views/theme/app_theme.dart';
-
 import 'services/audio_service.dart';
 
 void main() async {
@@ -20,7 +19,7 @@ class BusinessSimApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => GameState(),
       child: MaterialApp(
-        title: '連鎖超商營運系統',
+        title: '都會商雄：實體零售大亨',
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(),
         home: const _Bootstrap(),
@@ -77,6 +76,6 @@ class _BootstrapState extends State<_Bootstrap> {
         ),
       );
     }
-    return const MainDashboardScreen();
+    return const TitleScreen();
   }
 }
